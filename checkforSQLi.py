@@ -14,6 +14,7 @@ class checkforSQLi:
         self.method = None
         self.pre_payload = ''
 
+
     def hasSQLi(self):
         default_request = self.url
         test1 = [
@@ -86,7 +87,21 @@ class checkforSQLi:
 
     def get_database_length(self):
         databaseLenght = DatabaseLengthChecker(self.url, self.pre_payload)
-        return databaseLenght.get_database_length()
+
+
+        return databaseLenght.get_database_length(),databaseLenght.get_number_of_tables(),databaseLenght.extract_table_names()
+    def get_database_name(self):
+        databaseLenght = DatabaseLengthChecker(self.url, self.pre_payload)
+        return databaseLenght.get_extract_database_name()
+    def extract_fields_for_table(self,table_name):
+        databaseLenght = DatabaseLengthChecker(self.url, self.pre_payload)
+        return databaseLenght.extract_fields_for_table(table_name)
+    def extract_fields_for_row(self,table_name,fild):
+        databaseLenght = DatabaseLengthChecker(self.url, self.pre_payload)
+        return databaseLenght.extract_data(table_name,fild)
+
+
+
 
     def detect_and_set_pre_payload(self, test_payload):
         # Detect the type of quotes used in the payload
@@ -96,3 +111,4 @@ class checkforSQLi:
             self.set_pre_payload('"')
         else:
             self.set_pre_payload('')
+

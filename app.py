@@ -1,11 +1,12 @@
-
+import argparse
 
 import assciiPrint
 from checkforSQLi import checkforSQLi
 from input import  get_user_input
 
 
-def main():
+def main(proxy=None):
+    proxies = {"http": proxy, "https": proxy} if proxy else None
     assciiPrint
     url, parameter = get_user_input()
 
@@ -22,13 +23,32 @@ def main():
     print(f"Method: {method}")
     check_url=checkforSQLi(url)
     if check_url.hasSQLi():
-        print(f'Warning: The site may be vulnerable to SQL Injection! Your method is {check_url.get_method()}')
-        print(f'Data Base length: {check_url.get_database_length()}')
+        # length,number_of_table,names_of_table=check_url.get_database_length()
+        # print(f'Warning: The site may be vulnerable to SQL Injection! Your method is {check_url.get_method()}')
+        # print(f'Data Base length: {length}')
+        #
+        # print(f'number of tables{number_of_table}')
+        # print(f'names of tables{names_of_table}')
+        # table_name = input("Please enter the table name: ").strip()
+        # fields = check_url.extract_fields_for_table(table_name)
+        # field_name = input("Please enter the field name: ").strip()
+        # field_value = check_url.extract_fields_for_row(table_name,field_name)
+        # print("get Flag from filde....")
+        field_value = check_url.extract_fields_for_row('flag','flag_text')
+
+        print(field_value)
+
+
+
+
     else:
         print("The site appears to be secure from SQL Injection.")
 
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--proxy", help="Set proxy for outgoing requests, e.g., http://127.0.0.1:8080")
+    args = parser.parse_args()
 
-    main()
+    main(proxy=args.proxy)
